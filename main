@@ -1,0 +1,112 @@
+import random
+import time
+import cv2
+import mediapipe as mp
+import librosa
+import os
+from moviepy.editor import concatenate_videoclips
+from moviepy.video.VideoClip import ImageClip
+from moviepy.video.io.VideoFileClip import VideoFileClip
+from moviepy.audio.io.AudioFileClip import AudioFileClip
+
+def eye_detection(image):
+    mp_face_detection = mp.solutions.face_detection
+    mp_drawing = mp.solutions.drawing_utils
+    with mp_face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.5) as face_detection:
+        image.flags.writeable = False
+        results = face_detection.process(image)
+        image.flags.writeable = True
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        if results.detections:
+            for detection in results.detections:
+                mp_drawing.draw_detection(image, detection)
+                bbox = detection.location_data.relative_bounding_box
+                image_height, image_width, _ = image.shape
+                bbox = int(bbox.xmin * image_width), int(bbox.ymin * image_height), \
+                       int(bbox.width * image_width), int(bbox.height * image_height)
+                image_cropped = image[bbox[1]: bbox[1] + bbox[3], bbox[0]: bbox[0] + bbox[2]]
+                if len(image_cropped) > 0:  # Überprüfung, ob das Bild erfolgreich zugeschnitten wurde
+                    image_gray = cv2.cvtColor(image_cropped, cv2.COLOR_RGB2GRAY)
+                    image_gray = cv2.resize(image_gray, (1920, 1080))
+                    return image_gray
+                else:
+                    print("Fehler beim Zuschneiden des Bildes")
+        else:
+            print("Keine Gesichtsdetectionsergebnisse gefunden")
+            return None
+
+
+def get_beat_seconds(audio_file):
+    # Lade das Audio-File
+    y, sr = librosa.load(audio_file)
+
+    # Extrahiere die Beats
+    tempo, beats = librosa.beat.beat_track(y=y, sr=sr)
+
+    # Berechne die Dauer jedes Beats in Sekunden
+    beat_durations = librosa.frames_to_time(beats, sr=sr)
+
+    return beat_durations
+
+# Pfad zu deinem Audio-File angeben
+audio_file = "Hensonn-Flare.mp3"
+beat_list = []
+clips = []
+audio_background = AudioFileClip(audio_file)
+image_list = os.listdir("other")
+random.shuffle(image_list)
+
+# Rufe die Funktion auf und erhalte die Beat-Sekunden
+beat_seconds = get_beat_seconds(audio_file)
+"""
+for image in image_list:
+    image_path = "image/" + image
+    image_data = cv2.imread(image_path)
+    if image_data is not None:
+        image_processed = eye_detection(image_data)
+        if image_processed is not None:
+            cv2.imwrite("test/" + image + "_detected.jpg", image_processed)
+
+        else:
+            print("Keine Augen erkannt für das Bild:", image)
+    else:
+        print("Fehler beim Lesen des Bildes:", image_path)
+"""
+
+
+
+# Gib die Beat-Sekunden aus
+for i, beat in enumerate(beat_seconds):
+    print(f"Beat {i}: {round(beat, 2)} Sekunden")
+    beat_list.append(round(beat, 2))
+
+
+
+for i in range(len(image_list)):
+    image_list[i] = "other/" + image_list[i]
+
+
+for j, image in enumerate(image_list):
+    try:
+
+
+        clips.append(VideoFileClip(image).set_start(beat_seconds[j + 1]).set_duration(beat_seconds[j + 1] - beat_seconds[j]).resize(height=1920, width=1080))
+
+
+
+        clips[-1].fadeout(0.5).set_duration(3)
+
+        print(beat_seconds[j + 1])
+    except IndexError:
+        print("IndexError")
+
+print(clips)
+
+write_video_time = time.time()
+final_video = concatenate_videoclips(clips, method='compose').set_audio(audio_background).set_duration(beat_seconds[image_list.index(image_list[-1])] + 3)
+print(beat_seconds[image_list.index(image_list[-1])], "image index")
+final_video.write_videofile(f'{audio_file}1.mp4', codec="h264_nvenc", bitrate="6000k", fps=60)
+print(str(time.time() - write_video_time), 's')
+
+
+
